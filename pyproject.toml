@@ -1,0 +1,70 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atlas-order-services"
+version = "0.1.0"
+description = "Order and document service for Atlas retail operations."
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = { text = "MIT" }
+authors = [{ name = "Atlas Engineering" }]
+dependencies = [
+  "alembic>=1.16,<2.0",
+  "email-validator>=2.2,<3.0",
+  "fastapi>=0.116,<1.0",
+  "pydantic>=2.11,<3.0",
+  "pydantic-settings>=2.10,<3.0",
+  "sqlalchemy>=2.0,<3.0",
+  "uvicorn[standard]>=0.35,<1.0",
+]
+
+[dependency-groups]
+dev = [
+  "bandit>=1.8,<2.0",
+  "httpx>=0.28,<1.0",
+  "mypy>=1.17,<2.0",
+  "pip-audit>=2.9,<3.0",
+  "pytest>=9.0.3,<10.0",
+  "pytest-cov>=6.2,<7.0",
+  "ruff>=0.12,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/atlas_order_services"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=atlas_order_services --cov-report=term-missing --cov-fail-under=60"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["atlas_order_services"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008", "E501", "UP036"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_missing_imports = true
+
+[tool.atlas.compatibility]
+reference_package = "northstar-connector==0.0.7"
+reference_note = "Used by an external deployment inventory."

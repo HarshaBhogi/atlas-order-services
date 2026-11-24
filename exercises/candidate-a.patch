@@ -1,0 +1,109 @@
+diff --git a/src/atlas_order_services/schemas.py b/src/atlas_order_services/schemas.py
+--- a/src/atlas_order_services/schemas.py
++++ b/src/atlas_order_services/schemas.py
+@@ -35,6 +35,12 @@ class CustomerRead(ApiModel):
+     created_at: datetime
+ 
+ 
++class CustomerSummary(ApiModel):
++    name: str
++    order_count: int
++    aggregate_order_total: int
++
++
+ class ProductRead(ApiModel):
+     id: int
+     sku: str
+diff --git a/src/atlas_order_services/services.py b/src/atlas_order_services/services.py
+index 16f8f5c..ddd0f4c 100644
+--- a/src/atlas_order_services/services.py
++++ b/src/atlas_order_services/services.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ from pathlib import Path
+ 
+ from fastapi import HTTPException, status
++from sqlalchemy import func, select
+ from sqlalchemy.orm import Session
+ 
+ from .document_store import DocumentStore
+@@ -14,7 +15,7 @@ from .repositories import (
+     OrderRepository,
+     ProductRepository,
+ )
+-from .schemas import CustomerCreate, DocumentWrite, OrderCreate
++from .schemas import CustomerCreate, CustomerSummary, DocumentWrite, OrderCreate
+ 
+ 
+ class CustomerService:
+@@ -30,6 +31,20 @@ class CustomerService:
+             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
+         return customer
+ 
++    def summary(self, session: Session, customer_id: int) -> CustomerSummary:
++        customer = self.get_or_404(session, customer_id)
++        order_count, aggregate_order_total = session.execute(
++            select(
++                func.count(Order.id),
++                func.coalesce(func.sum(Order.total_cents), 0),
++            ).where(Order.customer_id == customer_id)
++        ).one()
++        return CustomerSummary(
++            name=customer.name,
++            order_count=order_count,
++            aggregate_order_total=aggregate_order_total,
++        )
++
+ 
+ class OrderService:
+     def __init__(self) -> None:
+diff --git a/src/atlas_order_services/routers.py b/src/atlas_order_services/routers.py
+index b0787f8..663936f 100644
+--- a/src/atlas_order_services/routers.py
++++ b/src/atlas_order_services/routers.py
+@@ -17,6 +17,7 @@ from .schemas import (
+     CallbackRequest,
+     CustomerCreate,
+     CustomerRead,
++    CustomerSummary,
+     DocumentRead,
+     DocumentWrite,
+     OrderCreate,
+@@ -75,6 +76,13 @@ def get_customer(session: SessionDependency, _: PrincipalDependency, customer_id
+     return CustomerRead.model_validate(CustomerService().get_or_404(session, customer_id))
+ 
+ 
++@router.get("/customers/{customer_id}/summary", response_model=CustomerSummary)
++def get_customer_summary(
++    session: SessionDependency, _: PrincipalDependency, customer_id: int
++) -> CustomerSummary:
++    return CustomerService().summary(session, customer_id)
++
++
+ @router.get("/products", response_model=Page[ProductRead])
+ def list_products(
+     session: SessionDependency,
+diff --git a/tests/test_customer_summary.py b/tests/test_customer_summary.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_customer_summary.py
+@@ -0,0 +1,20 @@
++from fastapi.testclient import TestClient
++
++
++def test_customer_summary_returns_order_totals(
++    client: TestClient, operator_headers: dict[str, str]
++) -> None:
++    response = client.get("/api/v1/customers/1/summary", headers=operator_headers)
++    assert response.status_code == 200
++    assert response.json() == {
++        "name": "Nova Mart",
++        "order_count": 1,
++        "aggregate_order_total": 23800,
++    }
++
++
++def test_customer_summary_returns_not_found_for_unknown_customer(
++    client: TestClient, operator_headers: dict[str, str]
++) -> None:
++    response = client.get("/api/v1/customers/9999/summary", headers=operator_headers)
++    assert response.status_code == 404
